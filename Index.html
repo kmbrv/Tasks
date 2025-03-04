@@ -1,0 +1,1076 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <title>Система учета задач</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
+    <style>
+        :root {
+            --background: #f5f5f7;
+            --text-color: #1d1d1f;
+            --block-bg: #ffffff;
+            --shadow: rgba(0, 0, 0, 0.05);
+            --overdue-bg: #ffe6e6;
+            --overdue-border: #ff2d55;
+            --in-progress-bg: #fff8e1;
+            --completed-bg: #f0f7f0;
+            --drag-over-bg: #e0e0e0;
+            --button-bg: #007aff;
+            --button-hover: #0062cc;
+            --edit-btn-bg: #ffca28;
+            --edit-btn-hover: #e6b800;
+            --delete-btn-bg: #ff2d55;
+            --delete-btn-hover: #cc2444;
+            --collapse-btn-bg: #d2d2d7;
+            --collapse-btn-hover: #b0b0b7;
+        }
+        [data-theme="dark"] {
+            --background: #1d1d1f;
+            --text-color: #f5f5f7;
+            --block-bg: #2d2d2d;
+            --shadow: rgba(255, 255, 255, 0.1);
+            --overdue-bg: #4d1a1a;
+            --overdue-border: #ff4d4d;
+            --in-progress-bg: #4d3a1a;
+            --completed-bg: #1a4d1a;
+            --drag-over-bg: #4d4d4d;
+            --button-bg: #1e90ff;
+            --button-hover: #1c7ed6;
+            --edit-btn-bg: #ffd700;
+            --edit-btn-hover: #e6c200;
+            --delete-btn-bg: #ff4040;
+            --delete-btn-hover: #e63939;
+            --collapse-btn-bg: #666;
+            --collapse-btn-hover: #888;
+        }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Helvetica Neue', Arial, sans-serif;
+            max-width: 1400px;
+            margin: 20px auto;
+            padding: 20px;
+            background: var(--background);
+            color: var(--text-color);
+            line-height: 1.4;
+            display: flex;
+            flex-direction: column;
+            transition: background 0.3s, color 0.3s;
+        }
+        .task-form, .auth-container {
+            margin-bottom: 32px;
+            padding: 20px;
+            background: var(--block-bg);
+            border-radius: 18px;
+            box-shadow: 0 4px 12px var(--shadow);
+        }
+        .container {
+            display: flex;
+            justify-content: space-between;
+            gap: 30px;
+        }
+        .task-list, .in-progress-list, .completed-list {
+            flex: 1;
+            min-width: 0;
+            background: var(--block-bg);
+            border-radius: 18px;
+            padding: 20px;
+            box-shadow: 0 4px 12px var(--shadow);
+            display: flex;
+            flex-direction: column;
+            transition: background 0.3s;
+        }
+        .task-list-header, .in-progress-list-header, .completed-list-header, .log-header {
+            position: sticky;
+            top: 0;
+            background: var(--block-bg);
+            z-index: 1;
+            padding-bottom: 10px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            min-height: 40px;
+            transition: background 0.3s;
+        }
+        .completed-list-header {
+            flex-wrap: wrap;
+            align-items: flex-start;
+        }
+        .completed-list-header h2 {
+            margin-right: 10px;
+        }
+        .filter-controls {
+            display: flex;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 8px;
+        }
+        .task-scrollable, .in-progress-scrollable, .completed-scrollable, .log-scrollable {
+            max-height: 500px;
+            overflow-y: auto;
+            display: block;
+            min-height: 50px;
+        }
+        .task-item, .in-progress-item, .completed-item {
+            padding: 12px 0;
+            border-bottom: 1px solid rgba(0, 0, 0, 0.08);
+            cursor: move;
+            transition: background-color 0.2s, transform 0.3s;
+            opacity: 0;
+            animation: fadeIn 0.3s forwards;
+        }
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(-10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        .task-item.removing, .in-progress-item.removing, .completed-item.removing {
+            animation: fadeOut 0.3s forwards;
+        }
+        @keyframes fadeOut {
+            from { opacity: 1; transform: translateY(0); }
+            to { opacity: 0; transform: translateY(-10px); }
+        }
+        .task-item:hover, .in-progress-item:hover, .completed-item:hover {
+            background-color: rgba(0, 0, 0, 0.05);
+        }
+        .in-progress-item {
+            background: var(--in-progress-bg);
+            border-radius: 8px;
+            margin: 4px 0;
+        }
+        .completed-item {
+            background: var(--completed-bg);
+            border-radius: 8px;
+            margin: 4px 0;
+        }
+        .task-name {
+            font-weight: 600;
+        }
+        .deadline-3days {
+            background: #fff9e6;
+            border-left: 4px solid #ffeb3b;
+        }
+        .deadline-2days {
+            background: #fff3e6;
+            border-left: 4px solid #ff9800;
+        }
+        .deadline-1day {
+            background: #ffe6e6;
+            border-left: 4px solid #f44336;
+        }
+        h2 {
+            font-size: 24px;
+            font-weight: 600;
+            margin: 0;
+            color: var(--text-color);
+        }
+        input, select {
+            margin: 8px 0;
+            padding: 8px 12px;
+            border: 1px solid #d2d2d7;
+            border-radius: 8px;
+            font-size: 16px;
+            background: var(--block-bg);
+            color: var(--text-color);
+            width: 100%;
+            box-sizing: border-box;
+            transition: border-color 0.2s;
+        }
+        input:focus, select:focus {
+            outline: none;
+            border-color: var(--button-bg);
+        }
+        button {
+            padding: 10px 20px;
+            margin: 4px 4px 0 0;
+            background: var(--button-bg);
+            color: white;
+            border: none;
+            border-radius: 8px;
+            font-size: 16px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+        button:hover {
+            background: var(--button-hover);
+        }
+        .task-button {
+            padding: 6px 12px;
+            font-size: 14px;
+        }
+        .delete-btn {
+            background: var(--delete-btn-bg);
+        }
+        .delete-btn:hover {
+            background: var(--delete-btn-hover);
+        }
+        .edit-btn {
+            background: var(--edit-btn-bg);
+        }
+        .edit-btn:hover {
+            background: var(--edit-btn-hover);
+        }
+        .collapse-btn {
+            padding: 6px;
+            width: 24px;
+            height: 24px;
+            background: var(--collapse-btn-bg);
+            color: var(--text-color);
+            border-radius: 50%;
+            font-size: 14px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .collapse-btn:hover {
+            background: var(--collapse-btn-hover);
+        }
+        .filter-controls {
+            margin: 0;
+        }
+        .filter-controls label {
+            font-size: 14px;
+            font-weight: 500;
+            color: var(--text-color);
+            margin-right: 8px;
+        }
+        .import-export-controls {
+            margin: 16px 0;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .theme-toggle, .stats-btn {
+            padding: 6px 12px;
+            background: var(--collapse-btn-bg);
+            color: var(--text-color);
+            border-radius: 8px;
+            cursor: pointer;
+        }
+        .theme-toggle:hover, .stats-btn:hover {
+            background: var(--collapse-btn-hover);
+        }
+        .task-number {
+            font-weight: 600;
+            margin-right: 8px;
+            color: var(--text-color);
+        }
+        .overdue {
+            background: var(--overdue-bg);
+            border-left: 4px solid var(--overdue-border);
+        }
+        .overdue-indicator {
+            color: var(--overdue-border);
+            font-weight: 600;
+            margin-left: 8px;
+        }
+        .collapsed .task-scrollable, 
+        .collapsed .in-progress-scrollable, 
+        .collapsed .completed-scrollable,
+        .collapsed .log-scrollable {
+            display: none;
+        }
+        .log-container {
+            margin-top: 32px;
+            padding: 20px;
+            background: var(--block-bg);
+            border-radius: 18px;
+            box-shadow: 0 4px 12px var(--shadow);
+            display: flex;
+            flex-direction: column;
+            transition: background 0.3s;
+        }
+        .log-item {
+            padding: 8px 0;
+            border-bottom: 1px solid rgba(0, 0, 0, 0.08);
+            font-size: 14px;
+        }
+        .drag-over {
+            background: var(--drag-over-bg);
+            transition: background 0.2s;
+        }
+        dialog {
+            border: none;
+            border-radius: 8px;
+            padding: 20px;
+            background: var(--block-bg);
+            color: var(--text-color);
+            box-shadow: 0 4px 12px var(--shadow);
+            transition: background 0.3s, color 0.3s;
+        }
+        #editForm label, #authForm label {
+            display: block;
+            margin: 10px 0;
+        }
+        #editForm button, #authForm button {
+            margin-top: 10px;
+        }
+        .hidden {
+            display: none;
+        }
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 10px 20px;
+            background: var(--block-bg);
+            border-radius: 18px;
+            box-shadow: 0 4px 12px var(--shadow);
+            margin-bottom: 20px;
+        }
+        .header span {
+            font-size: 18px;
+            font-weight: 500;
+        }
+        .logout-btn {
+            background: var(--delete-btn-bg);
+        }
+        .logout-btn:hover {
+            background: var(--delete-btn-hover);
+        }
+    </style>
+</head>
+<body>
+    <div id="authContainer" class="auth-container">
+        <h2>Вход</h2>
+        <form id="authForm">
+            <label>Email: <input type="email" id="authEmail" required></label><br>
+            <label>Пароль: <input type="password" id="authPassword" required></label><br>
+            <button type="button" onclick="signIn()">Войти</button>
+            <button type="button" onclick="signUp()">Регистрация</button>
+        </form>
+        <p id="userInfo"></p>
+    </div>
+
+    <div id="taskApp" class="hidden">
+        <div class="header">
+            <span id="userDisplayName">Пользователь: </span>
+            <button class="logout-btn" onclick="signOut()" title="Выйти из аккаунта"><i class="fas fa-sign-out-alt"></i> Выйти</button>
+        </div>
+
+        <div class="task-form">
+            <h2>Добавить задачу</h2>
+            <input type="text" id="taskName" placeholder="Название задачи"><br>
+            <select id="priority">
+                <option value="3">Высокая важность</option>
+                <option value="2">Средняя важность</option>
+                <option value="1">Низкая важность</option>
+            </select><br>
+            <input type="date" id="deadline"><br>
+            <select id="effort">
+                <option value="3">Высокая трудоемкость</option>
+                <option value="2">Средняя трудоемкость</option>
+                <option value="1">Низкая трудоемкость</option>
+            </select><br>
+            <button onclick="addTask()" title="Добавить новую задачу">Добавить задачу</button>
+        </div>
+
+        <div class="import-export-controls">
+            <button onclick="exportToJSON()" title="Экспортировать задачи в JSON"><i class="fas fa-download"></i> .json</button>
+            <button onclick="document.getElementById('importFile').click()" title="Импортировать задачи из JSON"><i class="fas fa-upload"></i> .json</button>
+            <input type="file" id="importFile" accept=".json" onchange="importFromJSON(event)" style="display: none;">
+            <button class="theme-toggle" onclick="toggleTheme()" title="Переключить тему"><i class="fas fa-moon"></i></button>
+            <button class="stats-btn" onclick="window.location.href='stats.html'" title="Перейти к статистике"><i class="fas fa-chart-bar"></i></button>
+        </div>
+
+        <div class="container">
+            <div class="task-list" id="taskList">
+                <div class="task-list-header">
+                    <h2>Активные задачи</h2>
+                    <button class="collapse-btn" onclick="toggleCollapse('taskList')" title="Свернуть/Развернуть"><i class="fas fa-chevron-down"></i></button>
+                </div>
+                <div class="task-scrollable" id="taskScrollable"></div>
+            </div>
+
+            <div class="in-progress-list" id="inProgressList">
+                <div class="in-progress-list-header">
+                    <h2>Задачи в работе</h2>
+                    <button class="collapse-btn" onclick="toggleCollapse('inProgressList')" title="Свернуть/Развернуть"><i class="fas fa-chevron-down"></i></button>
+                </div>
+                <div class="in-progress-scrollable" id="inProgressScrollable"></div>
+            </div>
+
+            <div class="completed-list" id="completedList">
+                <div class="completed-list-header">
+                    <h2>Выполненные задачи</h2>
+                    <button class="collapse-btn" onclick="toggleCollapse('completedList')" title="Свернуть/Развернуть"><i class="fas fa-chevron-down"></i></button>
+                    <div class="filter-controls">
+                        <label>Фильтр по дате: </label>
+                        <input type="date" id="filterDate" onchange="filterCompletedTasks()">
+                        <button onclick="clearFilter()" title="Очистить фильтр по дате">Очистить фильтр</button>
+                        <button onclick="exportCompletedToText()" title="Экспортировать выполненные задачи в TXT"><i class="fas fa-download"></i> .txt</button>
+                    </div>
+                </div>
+                <div class="completed-scrollable" id="completedScrollable"></div>
+            </div>
+        </div>
+
+        <div class="log-container" id="logContainer">
+            <div class="log-header">
+                <h2>Лог изменений</h2>
+                <button class="collapse-btn" onclick="toggleCollapse('logContainer')" title="Свернуть/Развернуть"><i class="fas fa-chevron-down"></i></button>
+            </div>
+            <div class="log-scrollable" id="logList"></div>
+        </div>
+    </div>
+
+    <dialog id="editModal">
+        <form id="editForm">
+            <h3>Редактировать задачу</h3>
+            <label>Название: <input type="text" id="editName" required></label><br>
+            <label>Важность: <select id="editPriority"><option value="3">Высокая</option><option value="2">Средняя</option><option value="1">Низкая</option></select></label><br>
+            <label>Дедлайн: <input type="date" id="editDeadline" required></label><br>
+            <label>Трудоёмкость: <select id="editEffort"><option value="3">Высокая</option><option value="2">Средняя</option><option value="1">Низкая</option></select></label><br>
+            <button type="submit">Сохранить</button>
+            <button type="button" onclick="document.getElementById('editModal').close()">Отмена</button>
+        </form>
+    </dialog>
+
+    <!-- Firebase SDK (версия 8.10.1) -->
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-auth.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-firestore.js"></script>
+    <script>
+        // Инициализация Firebase
+        const firebaseConfig = {
+            apiKey: "AIzaSyDC5SfsbllPeaG0sI8osvaUtX-Do679V4g",
+            authDomain: "task-924de.firebaseapp.com",
+            projectId: "task-924de",
+            storageBucket: "task-924de.appspot.com",
+            messagingSenderId: "212334495206",
+            appId: "1:212334495206:web:10ebaf792b28344630c227"
+        };
+        firebase.initializeApp(firebaseConfig);
+        const auth = firebase.auth();
+        const db = firebase.firestore();
+
+        // Переменные приложения
+        let tasks = [];
+        let inProgressTasks = [];
+        let completedTasks = [];
+        let changeLog = [];
+        let currentEdit = { list: null, index: null };
+        let unsubscribeTasks = null;
+        let unsubscribeInProgressTasks = null;
+        let unsubscribeCompletedTasks = null;
+        let unsubscribeChangeLog = null;
+
+        // Проверка состояния авторизации
+        auth.onAuthStateChanged(function(user) {
+            const authContainer = document.getElementById('authContainer');
+            const taskApp = document.getElementById('taskApp');
+            const userDisplayName = document.getElementById('userDisplayName');
+
+            if (user) {
+                authContainer.classList.add('hidden');
+                taskApp.classList.remove('hidden');
+                userDisplayName.textContent = `Пользователь: ${user.email}`;
+                loadTasks(user.uid); // Загружаем задачи в реальном времени
+            } else {
+                authContainer.classList.remove('hidden');
+                taskApp.classList.add('hidden');
+                userDisplayName.textContent = 'Пользователь: ';
+                tasks = [];
+                inProgressTasks = [];
+                completedTasks = [];
+                changeLog = [];
+                // Отписываемся от слушателей при выходе
+                if (unsubscribeTasks) unsubscribeTasks();
+                if (unsubscribeInProgressTasks) unsubscribeInProgressTasks();
+                if (unsubscribeCompletedTasks) unsubscribeCompletedTasks();
+                if (unsubscribeChangeLog) unsubscribeChangeLog();
+            }
+        });
+	
+        // Функции авторизации
+        function signIn() {
+            const email = document.getElementById('authEmail').value;
+            const password = document.getElementById('authPassword').value;
+            auth.signInWithEmailAndPassword(email, password)
+                .then(function() { alert('Вход выполнен!'); })
+                .catch(function(error) { alert('Ошибка входа: ' + error.message); });
+        }
+
+        function signUp() {
+            const email = document.getElementById('authEmail').value;
+            const password = document.getElementById('authPassword').value;
+            auth.createUserWithEmailAndPassword(email, password)
+                .then(function() { alert('Регистрация успешна!'); })
+                .catch(function(error) { alert('Ошибка регистрации: ' + error.message); });
+        }
+
+        function signOut() {
+            auth.signOut()
+                .then(function() { alert('Выход выполнен!'); })
+                .catch(function(error) { alert('Ошибка выхода: ' + error.message); });
+        }
+
+        // Логика работы с задачами
+        function calculateScore(priority, deadline, effort) {
+            const now = new Date();
+            const daysUntilDeadline = Math.max(0, Math.floor((deadline - now) / (1000 * 60 * 60 * 24)));
+            return (priority * 30) + (100 / (daysUntilDeadline + 1)) - (effort * 10);
+        }
+
+        function getDaysUntilDeadline(deadline) {
+            const now = new Date();
+            const diffTime = deadline - now;
+            return Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+        }
+
+        function getDeadlineClass(days) {
+            if (days <= 1) return 'deadline-1day';
+            if (days <= 2) return 'deadline-2days';
+            if (days <= 3) return 'deadline-3days';
+            return '';
+        }
+
+        function addToLog(message) {
+            const user = auth.currentUser;
+            if (!user) return;
+            const timestamp = new Date().toLocaleString('ru-RU');
+            changeLog.unshift({ message, timestamp });
+            if (changeLog.length > 50) changeLog.pop();
+            db.collection('users').doc(user.uid).collection('changeLog').doc('log').set({
+                logs: changeLog
+            }).catch(error => console.error("Ошибка сохранения лога:", error));
+        }
+
+        function checkOverdueTasks() {
+            const now = new Date();
+            let hasOverdue = false;
+            tasks.forEach(task => {
+                task.isOverdue = new Date(task.deadline) < now && !task.completedDate;
+                if (task.isOverdue) hasOverdue = true;
+            });
+            inProgressTasks.forEach(task => {
+                task.isOverdue = new Date(task.deadline) < now && !task.completedDate;
+                if (task.isOverdue) hasOverdue = true;
+            });
+            if (hasOverdue && !sessionStorage.getItem('overdueNotified')) {
+                const overdueCount = [...tasks, ...inProgressTasks].filter(task => task.isOverdue).length;
+                alert(`Внимание! У вас есть ${overdueCount} просрочен${overdueCount > 1 ? 'ные задачи' : 'ная задача'}`);
+                sessionStorage.setItem('overdueNotified', 'true');
+            }
+        }
+
+        function loadTasks(uid) {
+            const userDocRef = db.collection('users').doc(uid);
+
+            // Слушатель для tasks в реальном времени
+            unsubscribeTasks = userDocRef.collection('tasks').doc('list').onSnapshot(doc => {
+                if (doc.exists) {
+                    tasks = doc.data().tasks.map(task => ({
+                        ...task,
+                        deadline: new Date(task.deadline),
+                        score: calculateScore(task.priority, new Date(task.deadline), task.effort),
+                        isOverdue: false
+                    }));
+                } else {
+                    tasks = [];
+                }
+                tasks.sort((a, b) => b.score - a.score);
+                renderTasks();
+                checkOverdueTasks();
+            }, error => console.error("Ошибка загрузки tasks:", error));
+
+            // Слушатель для inProgressTasks в реальном времени
+            unsubscribeInProgressTasks = userDocRef.collection('inProgressTasks').doc('list').onSnapshot(doc => {
+                if (doc.exists) {
+                    inProgressTasks = doc.data().tasks.map(task => ({
+                        ...task,
+                        deadline: new Date(task.deadline),
+                        score: calculateScore(task.priority, new Date(task.deadline), task.effort),
+                        isOverdue: false
+                    }));
+                } else {
+                    inProgressTasks = [];
+                }
+                inProgressTasks.sort((a, b) => b.score - a.score);
+                renderInProgressTasks();
+                checkOverdueTasks();
+            }, error => console.error("Ошибка загрузки inProgressTasks:", error));
+
+            // Слушатель для completedTasks в реальном времени
+            unsubscribeCompletedTasks = userDocRef.collection('completedTasks').doc('list').onSnapshot(doc => {
+                if (doc.exists) {
+                    completedTasks = doc.data().tasks.map(task => ({
+                        ...task,
+                        deadline: new Date(task.deadline),
+                        completedDate: new Date(task.completedDate)
+                    }));
+                } else {
+                    completedTasks = [];
+                }
+                renderCompletedTasks();
+            }, error => console.error("Ошибка загрузки completedTasks:", error));
+
+            // Слушатель для changeLog в реальном времени
+            unsubscribeChangeLog = userDocRef.collection('changeLog').doc('log').onSnapshot(doc => {
+                if (doc.exists) {
+                    changeLog = doc.data().logs;
+                } else {
+                    changeLog = [];
+                }
+                renderLog();
+            }, error => console.error("Ошибка загрузки changeLog:", error));
+        }
+
+        function saveTasks() {
+            const user = auth.currentUser;
+            if (!user) return;
+
+            const userDocRef = db.collection('users').doc(user.uid);
+            userDocRef.collection('tasks').doc('list').set({ tasks: tasks })
+                .catch(error => console.error("Ошибка сохранения tasks:", error));
+            userDocRef.collection('inProgressTasks').doc('list').set({ tasks: inProgressTasks })
+                .catch(error => console.error("Ошибка сохранения inProgressTasks:", error));
+            userDocRef.collection('completedTasks').doc('list').set({ tasks: completedTasks })
+                .catch(error => console.error("Ошибка сохранения completedTasks:", error));
+        }
+
+        function addTask() {
+            const name = document.getElementById('taskName').value.trim();
+            const priorityElement = document.getElementById('priority');
+            const priority = priorityElement.value;
+            const deadlineInput = document.getElementById('deadline').value;
+            const effortElement = document.getElementById('effort');
+            const effort = effortElement.value;
+
+            if (!name || !priority || !deadlineInput || !effort) {
+                alert('Пожалуйста, заполните все поля');
+                return;
+            }
+
+            const deadline = new Date(deadlineInput);
+            if (isNaN(deadline.getTime())) {
+                alert('Неверный формат даты');
+                return;
+            }
+
+            const newTask = {
+                name,
+                priority: parseInt(priority),
+                deadline: deadline.toISOString(),
+                effort: parseInt(effort),
+                score: calculateScore(parseInt(priority), deadline, parseInt(effort)),
+                isOverdue: deadline < new Date()
+            };
+
+            tasks.push(newTask);
+            tasks.sort((a, b) => b.score - a.score);
+            addToLog(`Добавлена задача: ${name}`);
+            saveTasks();
+
+            document.getElementById('taskName').value = '';
+            document.getElementById('deadline').value = '';
+            priorityElement.selectedIndex = 0;
+            effortElement.selectedIndex = 0;
+        }
+
+        function renderTasks() {
+            const taskScrollable = document.getElementById('taskScrollable');
+            taskScrollable.innerHTML = '';
+
+            tasks.forEach((task, index) => {
+                const deadlineDate = new Date(task.deadline);
+                const daysLeft = getDaysUntilDeadline(deadlineDate);
+                const deadlineClass = task.isOverdue ? 'overdue' : getDeadlineClass(daysLeft);
+                const taskDiv = document.createElement('div');
+                taskDiv.className = `task-item ${deadlineClass}`;
+                taskDiv.draggable = true;
+                taskDiv.dataset.index = index;
+                taskDiv.dataset.list = 'tasks';
+                taskDiv.innerHTML = `
+                    <span class="task-number">${index + 1}.</span>
+                    <span class="task-name">${task.name}</span> ${task.isOverdue ? '<span class="overdue-indicator">[Просрочено]</span>' : ''} <br>
+                    Важность: ${task.priority} | 
+                    Дедлайн: ${deadlineDate.toLocaleDateString()} | 
+                    Трудоемкость: ${task.effort} | 
+                    Приоритет: ${task.score.toFixed(2)}
+                    <button class="edit-btn task-button" onclick="editTask('tasks', ${index})" title="Редактировать задачу"><i class="fas fa-edit"></i></button>
+                    <button class="delete-btn task-button" onclick="deleteTask(${index})" title="Удалить задачу"><i class="fas fa-trash"></i></button>
+                `;
+                taskScrollable.appendChild(taskDiv);
+            });
+            setupDragAndDrop();
+        }
+
+        function renderInProgressTasks() {
+            const inProgressScrollable = document.getElementById('inProgressScrollable');
+            inProgressScrollable.innerHTML = '';
+
+            inProgressTasks.forEach((task, index) => {
+                const deadlineDate = new Date(task.deadline);
+                const daysLeft = getDaysUntilDeadline(deadlineDate);
+                const deadlineClass = task.isOverdue ? 'overdue' : getDeadlineClass(daysLeft);
+                const taskDiv = document.createElement('div');
+                taskDiv.className = `in-progress-item ${deadlineClass}`;
+                taskDiv.draggable = true;
+                taskDiv.dataset.index = index;
+                taskDiv.dataset.list = 'inProgressTasks';
+                taskDiv.innerHTML = `
+                    <span class="task-number">${index + 1}.</span>
+                    <span class="task-name">${task.name}</span> ${task.isOverdue ? '<span class="overdue-indicator">[Просрочено]</span>' : ''} <br>
+                    Важность: ${task.priority} | 
+                    Дедлайн: ${deadlineDate.toLocaleDateString()} | 
+                    Трудоемкость: ${task.effort} | 
+                    Приоритет: ${task.score.toFixed(2)}
+                    <button class="edit-btn task-button" onclick="editTask('inProgressTasks', ${index})" title="Редактировать задачу"><i class="fas fa-edit"></i></button>
+                    <button class="delete-btn task-button" onclick="deleteInProgressTask(${index})" title="Удалить задачу"><i class="fas fa-trash"></i></button>
+                `;
+                inProgressScrollable.appendChild(taskDiv);
+            });
+            setupDragAndDrop();
+        }
+
+        function renderCompletedTasks() {
+            const completedScrollable = document.getElementById('completedScrollable');
+            const filterDateInput = document.getElementById('filterDate').value;
+            const filterDate = filterDateInput ? new Date(filterDateInput) : null;
+
+            completedScrollable.innerHTML = '';
+
+            let filteredTasks = completedTasks;
+            if (filterDate) {
+                filteredTasks = completedTasks.filter(task => {
+                    const completed = new Date(task.completedDate);
+                    return (
+                        completed.getFullYear() === filterDate.getFullYear() &&
+                        completed.getMonth() === filterDate.getMonth() &&
+                        completed.getDate() === filterDate.getDate()
+                    );
+                });
+            }
+
+            filteredTasks.forEach((task, index) => {
+                const taskDiv = document.createElement('div');
+                taskDiv.className = 'completed-item';
+                taskDiv.draggable = true;
+                taskDiv.dataset.index = completedTasks.indexOf(task);
+                taskDiv.dataset.list = 'completedTasks';
+                taskDiv.innerHTML = `
+                    <span class="task-name">${task.name}</span> <br>
+                    Важность: ${task.priority} | 
+                    Дедлайн: ${new Date(task.deadline).toLocaleDateString()} | 
+                    Трудоемкость: ${task.effort} | 
+                    Выполнено: ${new Date(task.completedDate).toLocaleDateString()}
+                    <button class="edit-btn task-button" onclick="editTask('completedTasks', ${completedTasks.indexOf(task)})" title="Редактировать задачу"><i class="fas fa-edit"></i></button>
+                    <button class="delete-btn task-button" onclick="deleteCompletedTask(${completedTasks.indexOf(task)})" title="Удалить задачу"><i class="fas fa-trash"></i></button>
+                `;
+                completedScrollable.appendChild(taskDiv);
+            });
+            setupDragAndDrop();
+        }
+
+        function renderLog() {
+            const logList = document.getElementById('logList');
+            logList.innerHTML = '';
+
+            changeLog.forEach(log => {
+                const logDiv = document.createElement('div');
+                logDiv.className = 'log-item';
+                logDiv.innerHTML = `${log.timestamp}: ${log.message}`;
+                logList.appendChild(logDiv);
+            });
+        }
+
+        async function deleteTask(index) {
+            const taskDiv = document.querySelector(`#taskScrollable .task-item:nth-child(${index + 1})`);
+            taskDiv.classList.add('removing');
+            await new Promise(resolve => setTimeout(resolve, 300));
+            const task = tasks.splice(index, 1)[0];
+            addToLog(`Задача "${task.name}" удалена из "Активные"`);
+            saveTasks();
+        }
+
+        async function deleteInProgressTask(index) {
+            const taskDiv = document.querySelector(`#inProgressScrollable .in-progress-item:nth-child(${index + 1})`);
+            taskDiv.classList.add('removing');
+            await new Promise(resolve => setTimeout(resolve, 300));
+            const task = inProgressTasks.splice(index, 1)[0];
+            addToLog(`Задача "${task.name}" удалена из "На выполнении"`);
+            saveTasks();
+        }
+
+        async function deleteCompletedTask(index) {
+            const taskDiv = document.querySelector(`#completedScrollable .completed-item:nth-child(${index + 1})`);
+            taskDiv.classList.add('removing');
+            await new Promise(resolve => setTimeout(resolve, 300));
+            const task = completedTasks.splice(index, 1)[0];
+            addToLog(`Задача "${task.name}" удалена из "Выполненные"`);
+            saveTasks();
+        }
+
+        function editTask(listName, index) {
+            const taskList = listName === 'tasks' ? tasks : listName === 'inProgressTasks' ? inProgressTasks : completedTasks;
+            const task = taskList[index];
+            
+            const modal = document.getElementById('editModal');
+            const form = document.getElementById('editForm');
+            document.getElementById('editName').value = task.name;
+            document.getElementById('editPriority').value = task.priority;
+            document.getElementById('editDeadline').value = new Date(task.deadline).toISOString().split('T')[0];
+            document.getElementById('editEffort').value = task.effort;
+
+            currentEdit = { list: listName, index };
+            modal.showModal();
+
+            form.onsubmit = function(e) {
+                e.preventDefault();
+                task.name = document.getElementById('editName').value;
+                task.priority = parseInt(document.getElementById('editPriority').value);
+                task.deadline = new Date(document.getElementById('editDeadline').value).toISOString();
+                task.effort = parseInt(document.getElementById('editEffort').value);
+                task.score = calculateScore(task.priority, new Date(task.deadline), task.effort);
+                task.isOverdue = new Date(task.deadline) < new Date();
+
+                if (listName === 'completedTasks' && !task.completedDate) {
+                    task.completedDate = new Date().toISOString();
+                }
+                if (listName !== 'completedTasks') delete task.completedDate;
+
+                tasks.sort((a, b) => b.score - a.score);
+                inProgressTasks.sort((a, b) => b.score - a.score);
+                addToLog(`Задача "${task.name}" отредактирована`);
+                saveTasks();
+                modal.close();
+            };
+        }
+
+        function toggleCollapse(listId) {
+            const list = document.getElementById(listId);
+            const btn = list.querySelector('.collapse-btn i');
+            list.classList.toggle('collapsed');
+            btn.className = list.classList.contains('collapsed') ? 'fas fa-chevron-up' : 'fas fa-chevron-down';
+        }
+
+        function setupDragAndDrop() {
+            const scrollables = document.querySelectorAll('.task-scrollable, .in-progress-scrollable, .completed-scrollable');
+            scrollables.forEach(scrollable => {
+                scrollable.removeEventListener('dragover', handleDragOver);
+                scrollable.removeEventListener('dragenter', handleDragEnter);
+                scrollable.removeEventListener('dragleave', handleDragLeave);
+                scrollable.removeEventListener('drop', handleDrop);
+                scrollable.removeEventListener('dragstart', handleDragStart);
+
+                scrollable.addEventListener('dragover', handleDragOver);
+                scrollable.addEventListener('dragenter', handleDragEnter);
+                scrollable.addEventListener('dragleave', handleDragLeave);
+                scrollable.addEventListener('drop', handleDrop);
+
+                scrollable.querySelectorAll('.task-item, .in-progress-item, .completed-item').forEach(item => {
+                    item.addEventListener('dragstart', handleDragStart);
+                });
+            });
+        }
+
+        function handleDragStart(e) {
+            e.dataTransfer.setData('index', e.target.dataset.index);
+            e.dataTransfer.setData('list', e.target.dataset.list);
+            e.target.style.opacity = '0.5';
+            e.target.style.transition = 'opacity 0.2s, transform 0.3s';
+        }
+
+        function handleDragOver(e) {
+            e.preventDefault();
+        }
+
+        function handleDragEnter(e) {
+            e.preventDefault();
+            const scrollable = e.target.closest('.task-scrollable, .in-progress-scrollable, .completed-scrollable');
+            if (scrollable) scrollable.classList.add('drag-over');
+        }
+
+        function handleDragLeave(e) {
+            const scrollable = e.target.closest('.task-scrollable, .in-progress-scrollable, .completed-scrollable');
+            if (scrollable && !scrollable.contains(e.relatedTarget)) {
+                scrollable.classList.remove('drag-over');
+            }
+        }
+
+        function handleDrop(e) {
+            e.preventDefault();
+            const draggedIndex = parseInt(e.dataTransfer.getData('index'));
+            const sourceList = e.dataTransfer.getData('list');
+            const targetScrollable = e.target.closest('.task-scrollable, .in-progress-scrollable, .completed-scrollable');
+            
+            if (!targetScrollable) return;
+
+            const targetList = targetScrollable.id === 'taskScrollable' ? 'tasks' :
+                              targetScrollable.id === 'inProgressScrollable' ? 'inProgressTasks' : 'completedTasks';
+
+            let task;
+            if (sourceList === 'tasks') {
+                task = tasks[draggedIndex];
+                tasks.splice(draggedIndex, 1);
+            } else if (sourceList === 'inProgressTasks') {
+                task = inProgressTasks[draggedIndex];
+                inProgressTasks.splice(draggedIndex, 1);
+            } else if (sourceList === 'completedTasks') {
+                task = completedTasks[draggedIndex];
+                completedTasks.splice(draggedIndex, 1);
+            }
+
+            if (!task) return;
+
+            if (targetList === 'tasks') {
+                delete task.completedDate;
+                task.score = calculateScore(task.priority, new Date(task.deadline), task.effort);
+                tasks.push(task);
+                tasks.sort((a, b) => b.score - a.score);
+                addToLog(`Задача "${task.name}" перемещена в "Активные"`);
+            } else if (targetList === 'inProgressTasks') {
+                delete task.completedDate;
+                task.score = calculateScore(task.priority, new Date(task.deadline), task.effort);
+                inProgressTasks.push(task);
+                inProgressTasks.sort((a, b) => b.score - a.score);
+                addToLog(`Задача "${task.name}" перемещена в "На выполнении"`);
+            } else if (targetList === 'completedTasks') {
+                task.completedDate = task.completedDate || new Date().toISOString();
+                completedTasks.push(task);
+                addToLog(`Задача "${task.name}" перемещена в "Выполненные"`);
+            }
+
+            targetScrollable.classList.remove('drag-over');
+            saveTasks();
+        }
+
+        function filterCompletedTasks() {
+            renderCompletedTasks();
+        }
+
+        function clearFilter() {
+            document.getElementById('filterDate').value = '';
+            renderCompletedTasks();
+        }
+
+        function exportToJSON() {
+            const data = { tasks, inProgressTasks, completedTasks, changeLog };
+            const json = JSON.stringify(data, null, 2);
+            const blob = new Blob([json], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = 'tasks.json';
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+        }
+
+        function importFromJSON(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                try {
+                    const data = JSON.parse(e.target.result);
+                    if (data.tasks) {
+                        tasks = data.tasks.map(task => ({
+                            ...task,
+                            deadline: new Date(task.deadline).toISOString(),
+                            score: calculateScore(task.priority, new Date(task.deadline), task.effort),
+                            isOverdue: false
+                        }));
+                    }
+                    if (data.inProgressTasks) {
+                        inProgressTasks = data.inProgressTasks.map(task => ({
+                            ...task,
+                            deadline: new Date(task.deadline).toISOString(),
+                            score: calculateScore(task.priority, new Date(task.deadline), task.effort),
+                            isOverdue: false
+                        }));
+                    }
+                    if (data.completedTasks) {
+                        completedTasks = data.completedTasks.map(task => ({
+                            ...task,
+                            deadline: new Date(task.deadline).toISOString(),
+                            completedDate: new Date(task.completedDate).toISOString()
+                        }));
+                    }
+                    if (data.changeLog) {
+                        changeLog = data.changeLog;
+                    }
+
+                    tasks.sort((a, b) => b.score - a.score);
+                    inProgressTasks.sort((a, b) => b.score - a.score);
+                    addToLog("Данные импортированы из JSON");
+                    saveTasks();
+                    alert('Задачи успешно импортированы!');
+                } catch (error) {
+                    alert('Ошибка при импорте: неверный формат файла JSON');
+                    console.error(error);
+                }
+            };
+            reader.readAsText(file);
+            document.getElementById('importFile').value = '';
+        }
+
+        function exportCompletedToText() {
+            if (completedTasks.length === 0) {
+                alert('Нет завершенных задач для экспорта!');
+                return;
+            }
+
+            const filterDateInput = document.getElementById('filterDate').value;
+            const filterDate = filterDateInput ? new Date(filterDateInput) : null;
+            let filteredTasks = completedTasks;
+
+            if (filterDate) {
+                filteredTasks = completedTasks.filter(task => {
+                    const completed = new Date(task.completedDate);
+                    return (
+                        completed.getFullYear() === filterDate.getFullYear() &&
+                        completed.getMonth() === filterDate.getMonth() &&
+                        completed.getDate() === filterDate.getDate()
+                    );
+                });
+            }
+
+            if (filteredTasks.length === 0) {
+                alert('Нет завершенных задач для выбранной даты!');
+                return;
+            }
+
+            let textContent = "Список выполненных задач\n";
+            textContent += "======================\n\n";
+
+            filteredTasks.forEach((task, index) => {
+                textContent += `${index + 1}. ${task.name}\n`;
+                textContent += `   Важность: ${task.priority}\n`;
+                textContent += `   Дедлайн: ${new Date(task.deadline).toLocaleDateString('ru-RU')}\n`;
+                textContent += `   Трудоемкость: ${task.effort}\n`;
+                textContent += `   Выполнено: ${new Date(task.completedDate).toLocaleDateString('ru-RU')}\n\n`;
+            });
+
+            const blob = new Blob([textContent], { type: 'text/plain;charset=utf-8' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = filterDate 
+                ? `completed_tasks_${filterDate.toLocaleDateString('ru-RU').replace(/\./g, '-')}.txt` 
+                : 'completed_tasks.txt';
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+        }
+
+        function toggleTheme() {
+            const currentTheme = document.body.getAttribute('data-theme');
+            const newTheme = currentTheme === 'dark' ? 'light' : 'dark';
+            document.body.setAttribute('data-theme', newTheme);
+            localStorage.setItem('theme', newTheme);
+            updateThemeIcon();
+        }
+
+        function updateThemeIcon() {
+            const themeToggle = document.querySelector('.theme-toggle i');
+            themeToggle.className = document.body.getAttribute('data-theme') === 'dark' ? 'fas fa-sun' : 'fas fa-moon';
+        }
+
+        setInterval(checkOverdueTasks, 60000);
+    </script>
+</body>
+</html>

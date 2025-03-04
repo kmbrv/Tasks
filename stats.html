@@ -1,0 +1,184 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <title>Статистика задач</title>
+    <!-- Подключение Font Awesome -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
+    <!-- Подключение Chart.js -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        :root {
+            --background: #f5f5f7;
+            --text-color: #1d1d1f;
+            --block-bg: #ffffff;
+            --shadow: rgba(0, 0, 0, 0.05);
+            --button-bg: #007aff;
+            --button-hover: #0062cc;
+            --collapse-btn-bg: #d2d2d7;
+            --collapse-btn-hover: #b0b0b7;
+        }
+        [data-theme="dark"] {
+            --background: #1d1d1f;
+            --text-color: #f5f5f7;
+            --block-bg: #2d2d2d;
+            --shadow: rgba(255, 255, 255, 0.1);
+            --button-bg: #1e90ff;
+            --button-hover: #1c7ed6;
+            --collapse-btn-bg: #666;
+            --collapse-btn-hover: #888;
+        }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Helvetica Neue', Arial, sans-serif;
+            max-width: 1400px;
+            margin: 20px auto;
+            padding: 20px;
+            background: var(--background);
+            color: var(--text-color);
+            line-height: 1.4;
+            transition: background 0.3s, color 0.3s;
+        }
+        .stats-container {
+            padding: 20px;
+            background: var(--block-bg);
+            border-radius: 18px;
+            box-shadow: 0 4px 12px var(--shadow);
+            transition: background 0.3s;
+        }
+        h2 {
+            font-size: 24px;
+            font-weight: 600;
+            margin: 0 0 20px 0;
+            color: var(--text-color);
+        }
+        button {
+            padding: 10px 20px;
+            margin: 4px 4px 0 0;
+            background: var(--button-bg);
+            color: white;
+            border: none;
+            border-radius: 8px;
+            font-size: 16px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+        button:hover {
+            background: var(--button-hover);
+        }
+        .theme-toggle {
+            padding: 6px 12px;
+            background: var(--collapse-btn-bg);
+            color: var(--text-color);
+            border-radius: 8px;
+            cursor: pointer;
+        }
+        .theme-toggle:hover {
+            background: var(--collapse-btn-hover);
+        }
+        .controls {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+        }
+        canvas {
+            max-width: 100%;
+        }
+    </style>
+</head>
+<body>
+    <div class="stats-container">
+        <div class="controls">
+            <h2>Статистика задач</h2>
+            <div>
+                <button onclick="window.location.href='index.html'" title="Вернуться к задачам"><i class="fas fa-arrow-left"></i> Назад</button>
+                <button class="theme-toggle" onclick="toggleTheme()" title="Переключить тему"><i class="fas fa-moon"></i></button>
+            </div>
+        </div>
+        <canvas id="statsChart" width="400" height="200"></canvas>
+    </div>
+
+    <script>
+        let completedTasks = [];
+
+        function loadTasks() {
+            const savedCompletedTasks = localStorage.getItem('completedTasks');
+            const savedTheme = localStorage.getItem('theme');
+
+            if (savedCompletedTasks) {
+                completedTasks = JSON.parse(savedCompletedTasks).map(task => ({
+                    ...task,
+                    deadline: new Date(task.deadline),
+                    completedDate: new Date(task.completedDate)
+                }));
+            } else {
+                completedTasks = [];
+            }
+            if (savedTheme) {
+                document.body.setAttribute('data-theme', savedTheme);
+                updateThemeIcon();
+            }
+
+            renderStats();
+        }
+
+        function toggleTheme() {
+            const currentTheme = document.body.getAttribute('data-theme');
+            const newTheme = currentTheme === 'dark' ? 'light' : 'dark';
+            document.body.setAttribute('data-theme', newTheme);
+            localStorage.setItem('theme', newTheme);
+            updateThemeIcon();
+        }
+
+        function updateThemeIcon() {
+            const themeToggle = document.querySelector('.theme-toggle i');
+            themeToggle.className = document.body.getAttribute('data-theme') === 'dark' ? 'fas fa-sun' : 'fas fa-moon';
+        }
+
+        function renderStats() {
+            const ctx = document.getElementById('statsChart').getContext('2d');
+            const now = new Date();
+            const weekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+            const completedLastWeek = completedTasks.filter(task => new Date(task.completedDate) >= weekAgo);
+            
+            const dates = [];
+            for (let i = 6; i >= 0; i--) {
+                const date = new Date(now.getTime() - i * 24 * 60 * 60 * 1000);
+                dates.push(date.toLocaleDateString('ru-RU'));
+            }
+
+            const counts = dates.map(date => {
+                return completedLastWeek.filter(task => task.completedDate.toLocaleDateString('ru-RU') === date).length;
+            });
+
+            // Уничтожаем предыдущий график только если он существует
+            if (window.statsChart && typeof window.statsChart.destroy === 'function') {
+                window.statsChart.destroy();
+            }
+
+            // Создаём новый график
+            window.statsChart = new Chart(ctx, {
+                type: 'bar',
+                data: {
+                    labels: dates,
+                    datasets: [{
+                        label: 'Выполненные задачи',
+                        data: counts,
+                        backgroundColor: 'rgba(54, 162, 235, 0.6)',
+                        borderColor: 'rgba(54, 162, 235, 1)',
+                        borderWidth: 1
+                    }]
+                },
+                options: {
+                    scales: {
+                        y: { beginAtZero: true, ticks: { stepSize: 1 } }
+                    }
+                }
+            });
+        }
+
+        window.onload = loadTasks;
+    </script>
+</body>
+</html>
